@@ -19,10 +19,30 @@ import { Directory, Filesystem } from '@capacitor/filesystem'
 
 import { evangridMapDb } from '@/db/evangridMapDb'
 
+/*
+  MapVisual.vue
+
+  Purpose:
+  - Shows the MapLibre map.
+  - Lets the user add/edit houses, zones, straight lines, text, and chained-dot lines.
+  - Saves map objects locally with Dexie.
+  - Supports online/offline map styles through systemSt.
+
+  Cleanup notes:
+  - Keep all map layer names in one component for now. Later, this file should be split into
+    smaller composables such as useMapZones, useMapHouses, useMapLines, and useMapStorage.
+  - MapLibre removes custom layers/sources when setStyle() runs, so the watcher re-adds them.
+  - Houses use DOM markers, while zones/lines/text use GeoJSON layers. That is normal here.
+*/
+
+// Single MapLibre instance used by this component.
+// Kept outside Vue reactivity because MapLibre objects should not be deeply reactive.
 let map: maplibregl.Map | null = null
 
+// Current tool/mode selected by the user.
 type Mode = 'none' | 'add_house' | 'add_zone' | 'add_arrow' | 'add_text' | 'add_line'
 
+// Icons the user can assign to a house marker.
 type HouseIcon =
   | 'Home'
   | 'HomeAlertOutline'
@@ -36,6 +56,7 @@ type HouseIcon =
   | 'HomeLock'
   | 'HomeLockOpen'
 
+// Status controls the house marker color.
 type HouseStatus =
   | 'new'
   | 'visited'
@@ -50,9 +71,11 @@ type HouseStatus =
   | 'danger'
   | 'moved'
   | 'inactive'
+// Zone handles: four resize corners plus one rotate handle.
 type ResizeHandle = 'nw' | 'ne' | 'se' | 'sw' | 'rotate'
 type ZoneShape = 'square' | 'rectangle' | 'circle'
 
+// Handle types for straight lines and text labels.
 type ArrowHandleKind = 'move' | 'resize' | 'rotate'
 type TextHandleKind = 'move' | 'rotate'
 
@@ -80,7 +103,8 @@ type Zone = {
   centerLat: number
   width: number
   height: number
-  rotation: number // add this
+  // Rotation is stored in degrees. 0 means no rotation.
+  rotation: number
   locked: boolean
   coordinates: number[][][]
 }
@@ -130,28 +154,34 @@ export default {
   name: 'MapVisual',
 
   data: () => ({
+    // Global app/map settings from Pinia.
     systemSt: systemSt(),
 
+    // Active add/edit tool. When mode is 'none', the bottom bar shows add buttons.
     mode: 'none' as Mode,
 
+    // Fullscreen edit dialogs. Each object type has its own dialog.
     houseDialog: false,
     zoneDialog: false,
     arrowDialog: false,
     textDialog: false,
     lineDialog: false,
 
+    // Temporary edit copies. These prevent half-edited form values from immediately changing saved data.
     editingHouse: null as House | null,
     editingZone: null as Zone | null,
     editingArrow: null as ArrowItem | null,
     editingText: null as TextItem | null,
     editingLine: null as ContinuousLine | null,
 
+    // Selected IDs control which object shows handles on the map.
     selectedHouseId: '',
     selectedZoneId: '',
     selectedArrowId: '',
     selectedTextId: '',
     selectedLineId: '',
 
+    // Pointer/drag state. Only one of these should be true at a time.
     isDraggingZone: false,
     isResizingZone: false,
     isRotatingZone: false,
@@ -172,12 +202,14 @@ export default {
     activeTextHandle: '' as TextHandleKind | '',
     draggingTextId: '',
 
+    // Initial map camera position. Change this to your default service area.
     defaultStartLocation: {
       lng: -87.449,
       lat: 20.212,
       zoom: 13,
     },
 
+    // Dropdown options for object forms.
     houseIconItems: [
       'Home',
       'HomeAlertOutline',
@@ -193,6 +225,7 @@ export default {
     ] as HouseIcon[],
     zoneShapeItems: ['square', 'rectangle', 'circle'] as ZoneShape[],
 
+    // In-memory map objects. Dexie is the source for persistent local storage.
     houses: [] as House[],
     zones: [] as Zone[],
     arrows: [] as ArrowItem[],
@@ -201,6 +234,7 @@ export default {
   }),
 
   computed: {
+    // Simple mode checks used by the toolbar and dialogs.
     isAddingHouse() {
       return this.mode === 'add_house'
     },
@@ -235,6 +269,9 @@ export default {
   },
 
   methods: {
+    // ---------------------------------------------------------------------------
+    // Offline tile loading
+    // ---------------------------------------------------------------------------
     setupOfflineTileProtocol() {
       if ((window as any).__offlineProtocolLoaded) return
       ;(window as any).__offlineProtocolLoaded = true
@@ -281,6 +318,10 @@ export default {
       })
     },
 
+    // ---------------------------------------------------------------------------
+    // Map setup
+    // ---------------------------------------------------------------------------
+
     initMap() {
       this.zones = this.zones.map((zone) => this.makeZone(zone))
 
@@ -316,6 +357,7 @@ export default {
       })
     },
 
+    // Registers all MapLibre click/drag events after the map and layers are loaded.
     addMapEvents() {
       if (!map) return
 
@@ -332,7 +374,6 @@ export default {
       map.on('touchstart', 'line-point-handles', this.startLinePointDrag)
 
       map.on('click', 'arrow-lines', this.onArrowClick)
-      map.on('click', 'arrow-heads', this.onArrowClick)
       map.on('mousedown', 'arrow-handles', this.startArrowHandleDrag)
       map.on('touchstart', 'arrow-handles', this.startArrowHandleDrag)
 
@@ -347,6 +388,11 @@ export default {
       map.on('touchend', this.stopPointer)
     },
 
+    // ---------------------------------------------------------------------------
+    // Add-mode handlers
+    // ---------------------------------------------------------------------------
+
+    // In chained-dot mode, each map click adds a new point to the selected line.
     onMapClick(event: maplibregl.MapMouseEvent) {
       if (!this.isAddingLine) return
 
@@ -363,6 +409,7 @@ export default {
       this.refreshLines()
     },
 
+    // Creates a new house at the map center and unlocks it for dragging.
     openAddHouseMode() {
       if (!map) return
 
@@ -392,6 +439,7 @@ export default {
       this.drawHouseMarkers()
     },
 
+    // Creates a new rectangular zone at the map center.
     openAddZoneMode() {
       if (!map) return
 
@@ -423,6 +471,7 @@ export default {
       this.refreshZones()
     },
 
+    // Creates a new straight line at the map center.
     openAddArrowMode() {
       if (!map) return
 
@@ -452,6 +501,7 @@ export default {
       this.refreshText()
     },
 
+    // Creates a new text label at the map center.
     openAddTextMode() {
       if (!map) return
 
@@ -482,6 +532,7 @@ export default {
       this.refreshArrows()
     },
 
+    // Starts a new chained-dot line. Points are added by clicking the map.
     openAddLineMode() {
       const line: ContinuousLine = {
         id: crypto.randomUUID(),
@@ -502,6 +553,10 @@ export default {
 
       this.refreshLines()
     },
+
+    // ---------------------------------------------------------------------------
+    // Dialog open/close helpers
+    // ---------------------------------------------------------------------------
 
     openSelectedHouseDetails() {
       const house = this.findHouse(this.selectedHouseId)
@@ -574,6 +629,10 @@ export default {
       this.editingText = null
       this.editingLine = null
     },
+
+    // ---------------------------------------------------------------------------
+    // Save handlers
+    // ---------------------------------------------------------------------------
 
     async saveHouse() {
       if (!this.editingHouse) return
@@ -673,6 +732,10 @@ export default {
       this.refreshLines()
     },
 
+    // ---------------------------------------------------------------------------
+    // Edit-position handlers
+    // ---------------------------------------------------------------------------
+
     editHousePosition() {
       if (!this.editingHouse) return
 
@@ -742,6 +805,10 @@ export default {
 
       this.refreshLines()
     },
+
+    // ---------------------------------------------------------------------------
+    // Delete handlers
+    // ---------------------------------------------------------------------------
 
     async deleteHouse() {
       if (!this.editingHouse) return
@@ -830,6 +897,10 @@ export default {
 
       this.refreshLines()
     },
+
+    // ---------------------------------------------------------------------------
+    // Map object click/drag handlers
+    // ---------------------------------------------------------------------------
 
     onZoneShapeChange() {
       if (!this.editingZone) return
@@ -1131,6 +1202,10 @@ export default {
       map.touchZoomRotate.enable()
     },
 
+    // ---------------------------------------------------------------------------
+    // House DOM markers
+    // ---------------------------------------------------------------------------
+
     drawHouseMarkers() {
       if (!map) return
 
@@ -1207,6 +1282,10 @@ export default {
 
       return el
     },
+
+    // ---------------------------------------------------------------------------
+    // MapLibre layer/source setup
+    // ---------------------------------------------------------------------------
 
     addZoneLayers() {
       if (!map) return
@@ -1444,6 +1523,10 @@ export default {
       this.openLineDetails(line)
     },
 
+    // ---------------------------------------------------------------------------
+    // Geometry helpers
+    // ---------------------------------------------------------------------------
+
     makeZone(zone: Zone) {
       const points = this.getShapePoints(zone)
 
@@ -1559,6 +1642,10 @@ export default {
         lat: rotateLngLat.lat,
       }
     },
+
+    // ---------------------------------------------------------------------------
+    // GeoJSON builders
+    // ---------------------------------------------------------------------------
 
     zonesToGeoJson() {
       return {
@@ -1874,6 +1961,10 @@ export default {
       }
     },
 
+    // ---------------------------------------------------------------------------
+    // Layer refresh helpers
+    // ---------------------------------------------------------------------------
+
     refreshZones() {
       this.refreshZoneLayer()
       this.refreshZoneLabels()
@@ -1919,6 +2010,10 @@ export default {
       handleSource?.setData(this.textHandlesToGeoJson() as any)
     },
 
+    // ---------------------------------------------------------------------------
+    // Find helpers
+    // ---------------------------------------------------------------------------
+
     findHouse(id: string) {
       return this.houses.find((house) => house.id === id)
     },
@@ -1938,6 +2033,10 @@ export default {
     findLine(id: string) {
       return this.lines.find((line) => line.id === id)
     },
+
+    // ---------------------------------------------------------------------------
+    // Display helpers
+    // ---------------------------------------------------------------------------
 
     getHouseIcon(icon: HouseIcon) {
       const icons = {
@@ -1974,6 +2073,10 @@ export default {
 
       return '#1976d2'
     },
+
+    // ---------------------------------------------------------------------------
+    // Dexie local database helpers
+    // ---------------------------------------------------------------------------
 
     async loadMapData() {
       const houses = await evangridMapDb.houses.toArray()
@@ -2050,6 +2153,7 @@ export default {
     },
   },
 
+  // Component lifecycle: load data first, then initialize MapLibre.
   async mounted() {
     this.setupOfflineTileProtocol()
 
@@ -2059,6 +2163,8 @@ export default {
   },
 
   watch: {
+    // MapLibre removes custom layers when the style changes.
+    // Re-add all custom layers/sources after the new style loads.
     'systemSt.mapMode'() {
       if (!map) return
 
@@ -2082,6 +2188,7 @@ export default {
     },
   },
 
+  // Cleanup: remove DOM markers and destroy the MapLibre instance.
   beforeUnmount() {
     this.houses.forEach((house) => house.marker?.remove())
 
@@ -2094,9 +2201,16 @@ export default {
 </script>
 
 <template>
+  <!--
+    Main map shell:
+    - The map fills the screen.
+    - Bottom navigation switches between add tools.
+    - Dialogs edit and save each selected object.
+  -->
   <v-card class="position-relative w-100 h-screen">
     <div id="map" class="w-100 h-100"></div>
 
+    <!-- Bottom tool bar. Shows add buttons when no tool is active. -->
     <v-bottom-navigation class="bg-primary mb-13">
       <v-card class="ga-1 rounded-0 bg-primary" elevation="0">
         <template v-if="mode === 'none'">
@@ -2223,6 +2337,7 @@ export default {
       </v-card>
     </v-bottom-navigation>
 
+    <!-- Context hint shown only while an add/edit mode is active. -->
     <v-alert
       v-if="hintText"
       class="position-absolute left-0 right-0 top-0 ma-3"
@@ -2234,7 +2349,10 @@ export default {
       <p style="font-size: 12px !important">{{ hintText }}</p>
     </v-alert>
 
-    <!-- ARROW DIALOG -->
+    <!--
+      ARROW DIALOG
+      Used for straight-line name, color, notes, save, edit-on-map, and delete.
+    -->
     <v-dialog
       v-model="arrowDialog"
       max-width="520"
@@ -2300,7 +2418,10 @@ export default {
       </v-card>
     </v-dialog>
 
-    <!-- TEXT DIALOG -->
+    <!--
+      TEXT DIALOG
+      Used for map labels. The purple handle rotates the text on the map.
+    -->
     <v-dialog v-model="textDialog" max-width="520" fullscreen transition="dialog-bottom-transition">
       <v-card v-if="editingText">
         <v-card-text class="pa-0">
@@ -2314,7 +2435,7 @@ export default {
             </v-card>
             <v-card class="px-2 mx-0 mb-4 bg-transparent" elevation="0">
               <p v-if="editingText" style="font-size: 12px !important">
-                Info: Adding text on map for additional notes or other.
+                Info: Adding text on map for additional notes or other map notes.
               </p>
               <p v-if="!editingText" style="font-size: 12px !important">
                 Hint: Save locks the text and updates your data. Edit points lets you move it again
@@ -2374,7 +2495,10 @@ export default {
       </v-card>
     </v-dialog>
 
-    <!-- LINE DIALOG -->
+    <!--
+      CHAINED-DOT LINE DIALOG
+      Used for route/path lines made from multiple movable points.
+    -->
     <v-dialog v-model="lineDialog" max-width="520" fullscreen transition="dialog-bottom-transition">
       <v-card v-if="editingLine">
         <v-card-text class="pa-0">
@@ -2465,7 +2589,10 @@ export default {
       </v-card>
     </v-dialog>
 
-    <!-- house dialog -->
+    <!--
+      HOUSE DIALOG
+      Used for marker name, address, icon, status, language, and notes.
+    -->
     <v-dialog
       v-model="houseDialog"
       max-width="520"
@@ -2484,8 +2611,8 @@ export default {
             </v-card>
             <v-card class="px-2 mx-0 mb-4 bg-transparent" elevation="0">
               <p v-if="isAddingHouse" style="font-size: 12px !important">
-                Info: Adding a house is a place you are or will planning visiting. A place you have
-                meetings, service, or church. These locations can have people tied to them.
+                Info: Adding a house is a place you are or plan to visit. A place you have meetings,
+                service, or church. These locations can have people tied to them.
               </p>
               <p v-if="!isAddingHouse" style="font-size: 12px !important">
                 Hint: Save locks the house and updates your data. Edit Position lets you move it
@@ -2587,7 +2714,10 @@ export default {
       </v-card>
     </v-dialog>
 
-    <!-- zone dialog -->
+    <!--
+      ZONE DIALOG
+      Used for zone shape, size, color, rotation, and notes.
+    -->
     <v-dialog v-model="zoneDialog" max-width="520" fullscreen transition="dialog-bottom-transition">
       <v-card v-if="editingZone">
         <v-card-text class="pa-0">
@@ -2597,12 +2727,12 @@ export default {
               <v-btn size="x-large" icon color="transparent" @click="closeDialogOnly">
                 <v-icon start icon="$ArrowLeftThin" />
               </v-btn>
-              <p class="text-subtitle-2 mx-2 my-0 font-weight-black">Zone DETAILS</p>
+              <p class="text-subtitle-2 mx-2 my-0 font-weight-black">ZONE DETAILS</p>
             </v-card>
             <v-card class="px-2 mx-0 mb-4 bg-transparent" elevation="0">
               <p v-if="isAddingHouse" style="font-size: 12px !important">
-                Info: Adding a Zone is a section of a map you can evangilize, assign to group,
-                completed, keep clear of, or any idea for zoning you see.
+                Info: Adding a Zone is a section of a map you can work, assign to group, completed,
+                keep clear of, or any idea for zoning you see.
               </p>
               <p v-if="!isAddingHouse" style="font-size: 12px !important">
                 Hint: Save locks the zone and updates your data. Edit Position lets you move it

@@ -17,6 +17,8 @@ import {
 import { systemSt } from '@/stores/systemSt.js'
 import { Directory, Filesystem } from '@capacitor/filesystem'
 
+import { evangridMapDb } from '@/db/evangridMapDb'
+
 let map: maplibregl.Map | null = null
 
 type Mode = 'none' | 'add_house' | 'add_zone' | 'add_arrow' | 'add_text' | 'add_line'
@@ -38,7 +40,6 @@ type HouseStatus =
   | 'new'
   | 'visited'
   | 'not_home'
-  | 'contacted'
   | 'follow_up'
   | 'interested'
   | 'bible_study'
@@ -49,11 +50,11 @@ type HouseStatus =
   | 'danger'
   | 'moved'
   | 'inactive'
-type ResizeHandle = 'nw' | 'ne' | 'se' | 'sw'
+type ResizeHandle = 'nw' | 'ne' | 'se' | 'sw' | 'rotate'
 type ZoneShape = 'square' | 'rectangle' | 'circle'
 
 type ArrowHandleKind = 'move' | 'resize' | 'rotate'
-type TextHandleKind = 'move'
+type TextHandleKind = 'move' | 'rotate'
 
 type House = {
   id: string
@@ -79,6 +80,7 @@ type Zone = {
   centerLat: number
   width: number
   height: number
+  rotation: number // add this
   locked: boolean
   coordinates: number[][][]
 }
@@ -152,6 +154,7 @@ export default {
 
     isDraggingZone: false,
     isResizingZone: false,
+    isRotatingZone: false,
     activeHandle: null as ResizeHandle | null,
     dragStartLng: 0,
     dragStartLat: 0,
@@ -190,37 +193,8 @@ export default {
     ] as HouseIcon[],
     zoneShapeItems: ['square', 'rectangle', 'circle'] as ZoneShape[],
 
-    houses: [
-      {
-        id: 'house_001',
-        name: 'House 1',
-        address: 'Example address',
-        lng: -87.449,
-        lat: 20.212,
-        status: 'new',
-        language: 'Spanish',
-        notes: 'First visit needed.',
-        icon: 'Home',
-        locked: true,
-      },
-    ] as House[],
-
-    zones: [
-      {
-        id: 'zone_001',
-        name: 'Zone 1',
-        color: '#1976d2',
-        notes: 'Main area.',
-        shape: 'rectangle',
-        centerLng: -87.4485,
-        centerLat: 20.213,
-        width: 0.013,
-        height: 0.01,
-        locked: true,
-        coordinates: [],
-      },
-    ] as Zone[],
-
+    houses: [] as House[],
+    zones: [] as Zone[],
     arrows: [] as ArrowItem[],
     textItems: [] as TextItem[],
     lines: [] as ContinuousLine[],
@@ -249,12 +223,13 @@ export default {
 
     hintText() {
       if (this.isAddingHouse) return 'House Edit: drag the house, then open controls.'
-      if (this.isAddingZone) return 'Zone Edit: drag or resize with white corners.'
+      if (this.isAddingZone)
+        return 'Zone Edit: drag, resize with white corners, or rotate with purple dot.'
       if (this.isAddingArrow)
-        return 'Arrow Edit: blue dot moves, orange dot resizes, purple dot rotates.'
-      if (this.isAddingText) return 'Text Edit: drag the blue dot to move the text.'
+        return 'Straight Line Edit: blue dot moves the line, orange dot changes length, purple dot rotates.'
+      if (this.isAddingText) return 'Text Edit: blue dot moves text, purple dot rotates text.'
       if (this.isAddingLine)
-        return 'Line Edit: click map to add points. Drag dots to move each point.'
+        return 'Chained Dot Line Edit: click the map to add connected dots. Drag dots to move each point.'
       return ''
     },
   },
@@ -432,6 +407,7 @@ export default {
         centerLat: center.lat,
         width: 0.006,
         height: 0.004,
+        rotation: 0,
         locked: false,
         coordinates: [],
       })
@@ -454,7 +430,7 @@ export default {
 
       const arrow: ArrowItem = {
         id: crypto.randomUUID(),
-        name: 'New Arrow',
+        name: 'New Straight Line',
         lng: center.lng,
         lat: center.lat,
         color: '#000000',
@@ -487,7 +463,7 @@ export default {
         text: 'Text',
         lng: center.lng,
         lat: center.lat,
-        color: '000000',
+        color: '#000000',
         fontSize: 22,
         rotation: 0,
         notes: '',
@@ -599,7 +575,7 @@ export default {
       this.editingLine = null
     },
 
-    saveHouse() {
+    async saveHouse() {
       if (!this.editingHouse) return
 
       const house = this.findHouse(this.editingHouse.id)
@@ -611,6 +587,8 @@ export default {
         marker: house.marker,
       })
 
+      await this.saveHouseToDb(house)
+
       this.mode = 'none'
       this.houseDialog = false
       this.editingHouse = null
@@ -618,13 +596,15 @@ export default {
       this.drawHouseMarkers()
     },
 
-    saveZone() {
+    async saveZone() {
       if (!this.editingZone) return
 
       const zone = this.findZone(this.editingZone.id)
       if (!zone) return
 
       Object.assign(zone, this.makeZone({ ...this.editingZone, locked: true }))
+
+      await this.saveZoneToDb(zone)
 
       this.mode = 'none'
       this.zoneDialog = false
@@ -633,7 +613,7 @@ export default {
       this.refreshZones()
     },
 
-    saveArrow() {
+    async saveArrow() {
       if (!this.editingArrow) return
 
       const arrow = this.findArrow(this.editingArrow.id)
@@ -644,6 +624,8 @@ export default {
         locked: true,
       })
 
+      await this.saveArrowToDb(arrow)
+
       this.mode = 'none'
       this.arrowDialog = false
       this.editingArrow = null
@@ -651,7 +633,7 @@ export default {
       this.refreshArrows()
     },
 
-    saveText() {
+    async saveText() {
       if (!this.editingText) return
 
       const text = this.findText(this.editingText.id)
@@ -662,6 +644,8 @@ export default {
         locked: true,
       })
 
+      await this.saveTextToDb(text)
+
       this.mode = 'none'
       this.textDialog = false
       this.editingText = null
@@ -669,7 +653,7 @@ export default {
       this.refreshText()
     },
 
-    saveLine() {
+    async saveLine() {
       if (!this.editingLine) return
 
       const line = this.findLine(this.editingLine.id)
@@ -679,6 +663,8 @@ export default {
         ...this.editingLine,
         locked: true,
       })
+
+      await this.saveLineToDb(line)
 
       this.mode = 'none'
       this.lineDialog = false
@@ -757,13 +743,17 @@ export default {
       this.refreshLines()
     },
 
-    deleteHouse() {
+    async deleteHouse() {
       if (!this.editingHouse) return
 
-      const house = this.findHouse(this.editingHouse.id)
+      const id = this.editingHouse.id
+      const house = this.findHouse(id)
+
       house?.marker?.remove()
 
-      this.houses = this.houses.filter((item) => item.id !== this.editingHouse?.id)
+      this.houses = this.houses.filter((item) => item.id !== id)
+
+      await this.deleteHouseFromDb(id)
 
       this.mode = 'none'
       this.houseDialog = false
@@ -773,10 +763,14 @@ export default {
       this.drawHouseMarkers()
     },
 
-    deleteZone() {
+    async deleteZone() {
       if (!this.editingZone) return
 
-      this.zones = this.zones.filter((item) => item.id !== this.editingZone?.id)
+      const id = this.editingZone.id
+
+      this.zones = this.zones.filter((item) => item.id !== id)
+
+      await this.deleteZoneFromDb(id)
 
       this.mode = 'none'
       this.zoneDialog = false
@@ -786,10 +780,14 @@ export default {
       this.refreshZones()
     },
 
-    deleteArrow() {
+    async deleteArrow() {
       if (!this.editingArrow) return
 
-      this.arrows = this.arrows.filter((item) => item.id !== this.editingArrow?.id)
+      const id = this.editingArrow.id
+
+      this.arrows = this.arrows.filter((item) => item.id !== id)
+
+      await this.deleteArrowFromDb(id)
 
       this.mode = 'none'
       this.arrowDialog = false
@@ -799,10 +797,14 @@ export default {
       this.refreshArrows()
     },
 
-    deleteText() {
+    async deleteText() {
       if (!this.editingText) return
 
-      this.textItems = this.textItems.filter((item) => item.id !== this.editingText?.id)
+      const id = this.editingText.id
+
+      this.textItems = this.textItems.filter((item) => item.id !== id)
+
+      await this.deleteTextFromDb(id)
 
       this.mode = 'none'
       this.textDialog = false
@@ -812,10 +814,14 @@ export default {
       this.refreshText()
     },
 
-    deleteLine() {
+    async deleteLine() {
       if (!this.editingLine) return
 
-      this.lines = this.lines.filter((item) => item.id !== this.editingLine?.id)
+      const id = this.editingLine.id
+
+      this.lines = this.lines.filter((item) => item.id !== id)
+
+      await this.deleteLineFromDb(id)
 
       this.mode = 'none'
       this.lineDialog = false
@@ -880,6 +886,7 @@ export default {
       if (!map) return
 
       const textId = event.features?.[0]?.properties?.id
+      const kind = event.features?.[0]?.properties?.kind as TextHandleKind
       const text = this.findText(textId)
 
       if (!text || text.locked) return
@@ -888,7 +895,7 @@ export default {
 
       this.selectedTextId = text.id
       this.draggingTextId = text.id
-      this.activeTextHandle = 'move'
+      this.activeTextHandle = kind
       this.isDraggingTextHandle = true
 
       map.dragPan.disable()
@@ -931,11 +938,25 @@ export default {
     },
 
     dragTextHandle(event: maplibregl.MapMouseEvent | maplibregl.MapTouchEvent) {
+      if (!map) return
+
       const text = this.findText(this.draggingTextId)
       if (!text) return
 
-      text.lng = event.lngLat.lng
-      text.lat = event.lngLat.lat
+      if (this.activeTextHandle === 'move') {
+        text.lng = event.lngLat.lng
+        text.lat = event.lngLat.lat
+      }
+
+      if (this.activeTextHandle === 'rotate') {
+        const centerPixel = map.project([text.lng, text.lat])
+        const pointerPixel = map.project([event.lngLat.lng, event.lngLat.lat])
+
+        const dx = pointerPixel.x - centerPixel.x
+        const dy = pointerPixel.y - centerPixel.y
+
+        text.rotation = Math.atan2(dy, dx) * (180 / Math.PI)
+      }
 
       this.refreshText()
     },
@@ -976,7 +997,12 @@ export default {
 
       this.selectedZoneId = zone.id
       this.activeHandle = event.features?.[0]?.properties?.name as ResizeHandle
-      this.isResizingZone = true
+
+      if (this.activeHandle === 'rotate') {
+        this.isRotatingZone = true
+      } else {
+        this.isResizingZone = true
+      }
 
       map.dragPan.disable()
       map.touchZoomRotate.disable()
@@ -1004,6 +1030,7 @@ export default {
     movePointer(event: maplibregl.MapMouseEvent | maplibregl.MapTouchEvent) {
       if (this.isDraggingZone) this.dragZone(event)
       if (this.isResizingZone) this.resizeZone(event)
+      if (this.isRotatingZone) this.rotateZone(event)
       if (this.isDraggingLinePoint) this.dragLinePoint(event)
       if (this.isDraggingArrowHandle) this.dragArrowHandle(event)
       if (this.isDraggingTextHandle) this.dragTextHandle(event)
@@ -1028,37 +1055,40 @@ export default {
       const zone = this.findZone(this.selectedZoneId)
       if (!zone) return
 
-      const bounds = this.getZoneBounds(zone)
+      const localPointer = this.getLocalZonePointer(zone, event)
 
-      let minLng = bounds.minLng
-      let maxLng = bounds.maxLng
-      let minLat = bounds.minLat
-      let maxLat = bounds.maxLat
+      const minSize = 0.0005
 
-      if (this.activeHandle === 'nw') {
-        minLng = event.lngLat.lng
-        maxLat = event.lngLat.lat
+      let nextWidth = Math.max(Math.abs(localPointer.x) * 2, minSize)
+      let nextHeight = Math.max(Math.abs(localPointer.y) * 2, minSize)
+
+      // Keep square and circle locked to equal width/height
+      if (zone.shape === 'square' || zone.shape === 'circle') {
+        const size = Math.max(nextWidth, nextHeight)
+        nextWidth = size
+        nextHeight = size
       }
 
-      if (this.activeHandle === 'ne') {
-        maxLng = event.lngLat.lng
-        maxLat = event.lngLat.lat
-      }
+      zone.width = nextWidth
+      zone.height = nextHeight
 
-      if (this.activeHandle === 'se') {
-        maxLng = event.lngLat.lng
-        minLat = event.lngLat.lat
-      }
+      Object.assign(zone, this.makeZone(zone))
+      this.refreshZones()
+    },
 
-      if (this.activeHandle === 'sw') {
-        minLng = event.lngLat.lng
-        minLat = event.lngLat.lat
-      }
+    rotateZone(event: maplibregl.MapMouseEvent | maplibregl.MapTouchEvent) {
+      if (!map) return
 
-      zone.centerLng = (minLng + maxLng) / 2
-      zone.centerLat = (minLat + maxLat) / 2
-      zone.width = Math.max(Math.abs(maxLng - minLng), 0.0005)
-      zone.height = Math.max(Math.abs(maxLat - minLat), 0.0005)
+      const zone = this.findZone(this.selectedZoneId)
+      if (!zone) return
+
+      const centerPixel = map.project([zone.centerLng, zone.centerLat])
+      const pointerPixel = map.project([event.lngLat.lng, event.lngLat.lat])
+
+      const dx = pointerPixel.x - centerPixel.x
+      const dy = pointerPixel.y - centerPixel.y
+
+      zone.rotation = Math.atan2(dy, dx) * (180 / Math.PI) + 90
 
       Object.assign(zone, this.makeZone(zone))
       this.refreshZones()
@@ -1082,6 +1112,7 @@ export default {
 
       this.isDraggingZone = false
       this.isResizingZone = false
+      this.isRotatingZone = false
       this.isDraggingLinePoint = false
       this.isDraggingArrowHandle = false
       this.isDraggingTextHandle = false
@@ -1242,7 +1273,7 @@ export default {
         source: 'zone-handles',
         paint: {
           'circle-radius': 9,
-          'circle-color': '#ffffff',
+          'circle-color': ['get', 'color'],
           'circle-stroke-color': '#1976d2',
           'circle-stroke-width': 3,
         },
@@ -1318,26 +1349,6 @@ export default {
         paint: {
           'line-color': ['get', 'color'],
           'line-width': 5,
-        },
-      })
-
-      map.addLayer({
-        id: 'arrow-heads',
-        type: 'symbol',
-        source: 'arrows',
-        layout: {
-          'symbol-placement': 'point',
-          'text-field': '➤',
-          'text-size': 28,
-          'text-rotate': ['get', 'rotation'],
-          'text-anchor': 'center',
-          'text-allow-overlap': true,
-          'text-ignore-placement': true,
-        },
-        paint: {
-          'text-color': ['get', 'color'],
-          'text-halo-color': '#ffffff',
-          'text-halo-width': 1,
         },
       })
     },
@@ -1447,6 +1458,7 @@ export default {
       const y = zone.centerLat
       let w = zone.width
       let h = zone.height
+      const rotation = zone.rotation || 0
 
       if (zone.shape === 'square' || zone.shape === 'circle') {
         const size = Math.max(w, h)
@@ -1455,23 +1467,56 @@ export default {
       }
 
       if (zone.shape === 'square' || zone.shape === 'rectangle') {
-        return [
-          [x - w / 2, y + h / 2],
-          [x + w / 2, y + h / 2],
-          [x + w / 2, y - h / 2],
-          [x - w / 2, y - h / 2],
+        const points = [
+          [-w / 2, h / 2],
+          [w / 2, h / 2],
+          [w / 2, -h / 2],
+          [-w / 2, -h / 2],
         ]
+
+        return points.map(([dx, dy]) => this.rotatePoint(x, y, dx, dy, rotation))
       }
 
-      return this.getCirclePoints(x, y, w, h, 48)
+      return this.getCirclePoints(x, y, w, h, 48, rotation)
     },
 
-    getCirclePoints(x: number, y: number, w: number, h: number, count: number) {
+    rotatePoint(
+      centerLng: number,
+      centerLat: number,
+      offsetLng: number,
+      offsetLat: number,
+      rotation: number,
+    ) {
+      const angle = (rotation * Math.PI) / 180
+
+      const rotatedLng = offsetLng * Math.cos(angle) - offsetLat * Math.sin(angle)
+      const rotatedLat = offsetLng * Math.sin(angle) + offsetLat * Math.cos(angle)
+
+      return [centerLng + rotatedLng, centerLat + rotatedLat]
+    },
+
+    getLocalZonePointer(zone: Zone, event: maplibregl.MapMouseEvent | maplibregl.MapTouchEvent) {
+      const dx = event.lngLat.lng - zone.centerLng
+      const dy = event.lngLat.lat - zone.centerLat
+
+      // inverse rotation: converts pointer position back into the zone's local unrotated space
+      const angle = -((zone.rotation || 0) * Math.PI) / 180
+
+      return {
+        x: dx * Math.cos(angle) - dy * Math.sin(angle),
+        y: dx * Math.sin(angle) + dy * Math.cos(angle),
+      }
+    },
+
+    getCirclePoints(x: number, y: number, w: number, h: number, count: number, rotation = 0) {
       const points: number[][] = []
 
       for (let i = 0; i < count; i++) {
         const angle = -Math.PI / 2 + (i / count) * Math.PI * 2
-        points.push([x + Math.cos(angle) * (w / 2), y + Math.sin(angle) * (h / 2)])
+        const dx = Math.cos(angle) * (w / 2)
+        const dy = Math.sin(angle) * (h / 2)
+
+        points.push(this.rotatePoint(x, y, dx, dy, rotation))
       }
 
       return points
@@ -1564,25 +1609,44 @@ export default {
         }
       }
 
-      const bounds = this.getZoneBounds(zone)
+      const points = this.getShapePoints(zone)
+      const rotatePoint = this.getZoneRotatePoint(zone)
 
       return {
         type: 'FeatureCollection',
         features: [
-          this.makeHandle('nw', bounds.minLng, bounds.maxLat),
-          this.makeHandle('ne', bounds.maxLng, bounds.maxLat),
-          this.makeHandle('se', bounds.maxLng, bounds.minLat),
-          this.makeHandle('sw', bounds.minLng, bounds.minLat),
+          this.makeHandle('nw', points[0][0], points[0][1], '#ffffff'),
+          this.makeHandle('ne', points[1][0], points[1][1], '#ffffff'),
+          this.makeHandle('se', points[2][0], points[2][1], '#ffffff'),
+          this.makeHandle('sw', points[3][0], points[3][1], '#ffffff'),
+          this.makeHandle('rotate', rotatePoint.lng, rotatePoint.lat, '#9c27b0'),
         ],
       }
     },
 
-    makeHandle(name: ResizeHandle, lng: number, lat: number) {
+    getZoneRotatePoint(zone: Zone) {
+      const points = this.getShapePoints(zone)
+
+      // For rectangle / square:
+      // points[0] = top-left
+      // points[1] = top-right
+      // points[2] = bottom-right
+      // points[3] = bottom-left
+      const topRight = points[1]
+
+      return {
+        lng: topRight[0],
+        lat: topRight[1],
+      }
+    },
+
+    makeHandle(name: ResizeHandle, lng: number, lat: number, color = '#ffffff') {
       return {
         type: 'Feature',
         properties: {
           name,
           zoneId: this.selectedZoneId,
+          color,
         },
         geometry: {
           type: 'Point',
@@ -1590,7 +1654,6 @@ export default {
         },
       }
     },
-
     linesToGeoJson() {
       return {
         type: 'FeatureCollection',
@@ -1746,6 +1809,8 @@ export default {
         }
       }
 
+      const rotate = this.getTextRotatePoint(text)
+
       return {
         type: 'FeatureCollection',
         features: [
@@ -1761,7 +1826,38 @@ export default {
               coordinates: [text.lng, text.lat],
             },
           },
+          {
+            type: 'Feature',
+            properties: {
+              id: text.id,
+              kind: 'rotate',
+              color: '#9c27b0',
+            },
+            geometry: {
+              type: 'Point',
+              coordinates: [rotate.lng, rotate.lat],
+            },
+          },
         ],
+      }
+    },
+
+    getTextRotatePoint(text: TextItem) {
+      if (!map) return { lng: text.lng, lat: text.lat }
+
+      const centerPixel = map.project([text.lng, text.lat])
+      const angle = ((text.rotation || 0) - 90) * (Math.PI / 180)
+
+      const rotatePixel = {
+        x: centerPixel.x + Math.cos(angle) * 45,
+        y: centerPixel.y + Math.sin(angle) * 45,
+      }
+
+      const point = map.unproject(rotatePixel)
+
+      return {
+        lng: point.lng,
+        lat: point.lat,
       }
     },
 
@@ -1878,10 +1974,87 @@ export default {
 
       return '#1976d2'
     },
+
+    async loadMapData() {
+      const houses = await evangridMapDb.houses.toArray()
+      const zones = await evangridMapDb.zones.toArray()
+      const arrows = await evangridMapDb.arrows.toArray()
+      const texts = await evangridMapDb.texts.toArray()
+      const lines = await evangridMapDb.lines.toArray()
+
+      this.houses = houses.map((house) => ({
+        ...house,
+        marker: undefined,
+      })) as House[]
+
+      this.zones = zones.map((zone) => this.makeZone(zone as Zone)) as Zone[]
+
+      this.arrows = arrows as ArrowItem[]
+      this.textItems = texts as TextItem[]
+      this.lines = lines as ContinuousLine[]
+    },
+
+    cleanHouseForDb(house: House) {
+      return {
+        id: house.id,
+        name: house.name,
+        address: house.address,
+        lng: house.lng,
+        lat: house.lat,
+        status: house.status,
+        language: house.language,
+        notes: house.notes,
+        icon: house.icon,
+        locked: house.locked,
+      }
+    },
+
+    async saveHouseToDb(house: House) {
+      await evangridMapDb.houses.put(this.cleanHouseForDb(house))
+    },
+
+    async saveZoneToDb(zone: Zone) {
+      await evangridMapDb.zones.put(JSON.parse(JSON.stringify(zone)))
+    },
+
+    async saveArrowToDb(arrow: ArrowItem) {
+      await evangridMapDb.arrows.put(JSON.parse(JSON.stringify(arrow)))
+    },
+
+    async saveTextToDb(text: TextItem) {
+      await evangridMapDb.texts.put(JSON.parse(JSON.stringify(text)))
+    },
+
+    async saveLineToDb(line: ContinuousLine) {
+      await evangridMapDb.lines.put(JSON.parse(JSON.stringify(line)))
+    },
+
+    async deleteHouseFromDb(id: string) {
+      await evangridMapDb.houses.delete(id)
+    },
+
+    async deleteZoneFromDb(id: string) {
+      await evangridMapDb.zones.delete(id)
+    },
+
+    async deleteArrowFromDb(id: string) {
+      await evangridMapDb.arrows.delete(id)
+    },
+
+    async deleteTextFromDb(id: string) {
+      await evangridMapDb.texts.delete(id)
+    },
+
+    async deleteLineFromDb(id: string) {
+      await evangridMapDb.lines.delete(id)
+    },
   },
 
-  mounted() {
+  async mounted() {
     this.setupOfflineTileProtocol()
+
+    await this.loadMapData()
+
     this.initMap()
   },
 
@@ -1960,7 +2133,7 @@ export default {
             @click="openAddArrowMode"
           >
             <v-icon start icon="$ArrowRightThin" />
-            + Arrow
+            + Line
           </v-btn>
 
           <v-btn
@@ -1984,7 +2157,7 @@ export default {
             @click="openAddLineMode"
           >
             <v-icon start icon="$VectorSquarePlus" />
-            + Line
+            + Dots
           </v-btn>
         </template>
 
@@ -2021,7 +2194,7 @@ export default {
           elevation="0"
           @click="openSelectedArrowDetails"
         >
-          Open Arrow Controls
+          Open Straight Line Controls
         </v-btn>
 
         <v-btn
@@ -2045,7 +2218,7 @@ export default {
           elevation="0"
           @click="openSelectedLineDetails"
         >
-          Finish / Open Line Controls
+          Finish / Open Chained Dot Controls
         </v-btn>
       </v-card>
     </v-bottom-navigation>
@@ -2076,15 +2249,15 @@ export default {
               <v-btn size="x-large" icon color="transparent" @click="closeDialogOnly">
                 <v-icon start icon="$ArrowLeftThin" />
               </v-btn>
-              <p class="text-subtitle-2 mx-2 my-0 font-weight-black">ARROW DETAILS</p>
+              <p class="text-subtitle-2 mx-2 my-0 font-weight-black">STRAIGHT LINE DETAILS</p>
             </v-card>
             <v-card class="px-2 mx-0 mb-4 bg-transparent" elevation="0">
               <p v-if="editingArrow" style="font-size: 12px !important">
-                Info: Adding these arrows for direction of soul winning planned.
+                Info: Add a straight line for direction, planning, or simple map marking.
               </p>
               <p v-if="!editingArrow" style="font-size: 12px !important">
-                Hint: Save locks the arrow and updates your data. Edit points lets you move it again
-                or edit details. Delete removes it.
+                Hint: Save locks the straight line and updates your data. Edit on map lets you move,
+                resize, or rotate it again. Delete removes it.
               </p>
             </v-card>
           </div>
@@ -2170,6 +2343,13 @@ export default {
               variant="outlined"
               density="compact"
             />
+            <v-text-field
+              v-model.number="editingText.rotation"
+              label="Rotation"
+              variant="outlined"
+              density="compact"
+              type="number"
+            />
             <v-textarea
               v-model="editingText.notes"
               label="Notes"
@@ -2204,15 +2384,15 @@ export default {
               <v-btn size="x-large" icon color="transparent" @click="closeDialogOnly">
                 <v-icon start icon="$ArrowLeftThin" />
               </v-btn>
-              <p class="text-subtitle-2 mx-2 my-0 font-weight-black">LINE DETAILS</p>
+              <p class="text-subtitle-2 mx-2 my-0 font-weight-black">CHAINED DOT LINE DETAILS</p>
             </v-card>
             <v-card class="px-2 mx-0 mb-4 bg-transparent" elevation="0">
               <p v-if="editingLine" style="font-size: 12px !important">
-                Info: Adding this point based lines can help plan points visting or plan.
+                Info: Add connected dots to make a route, path, boundary, or planned movement line.
               </p>
               <p v-if="!editingLine" style="font-size: 12px !important">
-                Hint: Save locks the line and updates your data. Edit points lets you move it again
-                or edit details. Delete removes it.
+                Hint: Save locks the chained dot line and updates your data. Edit points lets you
+                move the dots again. Delete removes it.
               </p>
             </v-card>
           </div>
@@ -2220,13 +2400,13 @@ export default {
           <div class="pa-4">
             <v-text-field
               v-model="editingLine.name"
-              label="Line Name"
+              label="Chained Dot Line Name"
               variant="outlined"
               density="compact"
             />
             <v-text-field
               v-model="editingLine.color"
-              label="Line Color"
+              label="Chained Dot Line Color"
               type="color"
               variant="outlined"
               density="compact"
@@ -2239,7 +2419,7 @@ export default {
               rows="3"
             />
 
-            <p class="text-caption font-weight-bold mt-4 mb-2">Line Points</p>
+            <p class="text-caption font-weight-bold mt-4 mb-2">Connected Dots</p>
 
             <v-card
               v-for="(point, index) in editingLine.points"
@@ -2274,7 +2454,7 @@ export default {
         <v-card-actions>
           <v-card width="100%" elevation="0">
             <v-btn class="my-2" color="grey" variant="outlined" block @click="editLinePosition"
-              >Edit Points On Map</v-btn
+              >Edit Dots On Map</v-btn
             >
             <v-btn class="my-2" color="green" variant="flat" block @click="saveLine">Save</v-btn>
             <v-btn class="mb-2 mt-6" color="error" variant="tonal" block @click="deleteLine"
@@ -2468,6 +2648,15 @@ export default {
             <v-text-field
               v-model.number="editingZone.height"
               label="Height"
+              variant="outlined"
+              density="compact"
+              type="number"
+              @update:model-value="onZoneShapeChange"
+            />
+
+            <v-text-field
+              v-model.number="editingZone.rotation"
+              label="Rotation"
               variant="outlined"
               density="compact"
               type="number"

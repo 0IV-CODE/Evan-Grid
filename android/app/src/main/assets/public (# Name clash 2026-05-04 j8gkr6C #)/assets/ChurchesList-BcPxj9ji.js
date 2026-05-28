@@ -1,0 +1,1 @@
+import{P as e,m as t,t as n}from"./_plugin-vue_export-helper-B7Vxocui.js";var r={name:`ChurchesList`,data:()=>({}),computed:{},methods:{}};function i(n,r,i,a,o,s){return e(),t(`p`,null,`Churches List`)}var a=n(r,[[`render`,i]]);export{a as default};

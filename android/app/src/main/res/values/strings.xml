@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Evangrid</string>
+    <string name="title_activity_main">Evangrid</string>
+    <string name="package_name">com.ivcode.evangrid</string>
+    <string name="custom_url_scheme">com.ivcode.evangrid</string>
+</resources>

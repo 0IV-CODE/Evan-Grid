@@ -17,6 +17,7 @@ import { mdiChevronDown } from '@mdi/js'
 import { mdiChevronUp } from '@mdi/js'
 import { mdiRefresh } from '@mdi/js'
 import { mdiPlus } from '@mdi/js'
+import { mdiMinus } from '@mdi/js'
 import { mdiCircle } from '@mdi/js'
 import { mdiContentSaveOutline } from '@mdi/js'
 import { mdiTrashCanOutline } from '@mdi/js'
@@ -69,6 +70,12 @@ import { mdiFileDocumentOutline } from '@mdi/js'
 import { mdiFormatListBulleted } from '@mdi/js'
 import { mdiArrowULeftTop } from '@mdi/js'
 import { mdiArrowURightTop } from '@mdi/js'
+import { mdiBookmark } from '@mdi/js'
+import { mdiBookmarkOutline } from '@mdi/js'
+import { mdiBookmarkMultiple } from '@mdi/js'
+import { mdiCommentOutline } from '@mdi/js'
+import { mdiHeartOutline } from '@mdi/js'
+import { mdiTag } from '@mdi/js'
 
 // Components (explicit)
 import {
@@ -107,6 +114,7 @@ import {
   VTextarea,
   VAlert,
   VBottomNavigation,
+  VChip,
 } from 'vuetify/components'
 import { Ripple } from 'vuetify/directives'
 
@@ -147,6 +155,7 @@ export default createVuetify({
     VTextarea,
     VAlert,
     VBottomNavigation,
+    VChip,
   },
   directives: { Ripple },
   theme: {
@@ -190,6 +199,7 @@ export default createVuetify({
       ChevronLeft: mdiChevronLeft,
       Refresh: mdiRefresh,
       Plus: mdiPlus,
+      Minus: mdiMinus,
       Circle: mdiCircle,
       ContentSaveOutline: mdiContentSaveOutline,
       TrashCanOutline: mdiTrashCanOutline,
@@ -239,6 +249,12 @@ export default createVuetify({
       FormatListBulleted: mdiFormatListBulleted,
       ArrowULeftTop: mdiArrowULeftTop,
       ArrowURightTop: mdiArrowURightTop,
+      Bookmark: mdiBookmark,
+      BookmarkOutline: mdiBookmarkOutline,
+      BookmarkMultiple: mdiBookmarkMultiple,
+      CommentOutline: mdiCommentOutline,
+      HeartOutline: mdiHeartOutline,
+      Tag: mdiTag,
     },
     sets: {
       mdi,

@@ -167,6 +167,8 @@ export default {
     textDialog: false,
     lineDialog: false,
 
+    showMapTools: false,
+
     // Temporary edit copies. These prevent half-edited form values from immediately changing saved data.
     editingHouse: null as House | null,
     editingZone: null as Zone | null,
@@ -2207,12 +2209,24 @@ export default {
     - Bottom navigation switches between add tools.
     - Dialogs edit and save each selected object.
   -->
-  <v-card class="position-relative w-100 h-screen">
-    <div id="map" class="w-100 h-100"></div>
+  <v-card class="map-shell position-relative w-100" rounded="0">
+    <div id="map" class="map-container"></div>
+
+    <!-- Open Toolbar -->
+    <v-btn
+      v-if="!showMapTools"
+      variant="tonal"
+      color="blue"
+      class="map-pencil-btn"
+      elevation="0"
+      @click="showMapTools = !showMapTools"
+    >
+      <v-icon icon="$PencilOutline" />
+    </v-btn>
 
     <!-- Bottom tool bar. Shows add buttons when no tool is active. -->
-    <v-bottom-navigation class="bg-primary mb-13">
-      <v-card class="ga-1 rounded-0 bg-primary" elevation="0">
+    <v-bottom-navigation v-if="showMapTools" class="bg-transparent mb-15" elevation="0" rounded="0">
+      <v-card class="ga-1 rounded-lg bg-primary" elevation="0">
         <template v-if="mode === 'none'">
           <v-btn
             stacked
@@ -2272,6 +2286,19 @@ export default {
           >
             <v-icon start icon="$VectorSquarePlus" />
             + Dots
+          </v-btn>
+
+          <v-btn
+            v-if="showMapTools"
+            stacked
+            size="x-small"
+            color="transparent"
+            class="text-grey"
+            elevation="0"
+            @click="showMapTools = !showMapTools"
+          >
+            <v-icon start icon="$Close" />
+            CLOSE
           </v-btn>
         </template>
 
@@ -2819,3 +2846,23 @@ export default {
     </v-dialog>
   </v-card>
 </template>
+
+<style>
+/* canva for maps */
+.map-shell {
+  height: 100vh;
+}
+
+.map-container {
+  width: 100%;
+  height: 100%;
+}
+
+/* open toolbar pencil */
+.map-pencil-btn {
+  position: absolute;
+  right: 16px;
+  bottom: 70px;
+  z-index: 10;
+}
+</style>

@@ -89,8 +89,8 @@ export default {
 </script>
 
 <template>
-  <v-bottom-navigation v-if="systemSt.menuOpen" class="bg-primary" elevation="0">
-    <v-card class="px-4 ga-2 bg-primary d-flex justify-space-between w-100" rounded="0">
+  <v-bottom-navigation v-if="systemSt.menuOpen" class="bg-transparent" elevation="0">
+    <v-card class="bg-primary d-flex justify-space-between mb-2" rounded="lg" width="350">
       <!-- MAIN MENU -->
       <template v-if="!menuMoreOpen">
         <v-btn

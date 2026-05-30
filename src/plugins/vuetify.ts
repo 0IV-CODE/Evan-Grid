@@ -76,6 +76,7 @@ import { mdiBookmarkMultiple } from '@mdi/js'
 import { mdiCommentOutline } from '@mdi/js'
 import { mdiHeartOutline } from '@mdi/js'
 import { mdiTag } from '@mdi/js'
+import { mdiEarth } from '@mdi/js'
 
 // Components (explicit)
 import {
@@ -255,6 +256,7 @@ export default createVuetify({
       CommentOutline: mdiCommentOutline,
       HeartOutline: mdiHeartOutline,
       Tag: mdiTag,
+      Earth: mdiEarth,
     },
     sets: {
       mdi,

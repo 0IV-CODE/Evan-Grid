@@ -208,7 +208,7 @@ export default {
     defaultStartLocation: {
       lng: -87.449,
       lat: 20.212,
-      zoom: 13,
+      zoom: 2,
     },
 
     // Dropdown options for object forms.
@@ -432,6 +432,7 @@ export default {
 
       this.houses.push(house)
       this.mode = 'add_house'
+      this.showMapTools = false
       this.selectedHouseId = house.id
       this.selectedZoneId = ''
       this.selectedArrowId = ''
@@ -746,6 +747,7 @@ export default {
 
       house.locked = false
       this.mode = 'add_house'
+
       this.selectedHouseId = house.id
       this.houseDialog = false
 
@@ -2153,6 +2155,31 @@ export default {
     async deleteLineFromDb(id: string) {
       await evangridMapDb.lines.delete(id)
     },
+
+    showWorldView() {
+      if (!map) return
+
+      map.flyTo({
+        center: [this.defaultStartLocation.lng, this.defaultStartLocation.lat],
+        zoom: this.defaultStartLocation.zoom,
+        duration: 700,
+      })
+    },
+
+    resetMapNav() {
+      this.mode = 'none'
+      this.showMapTools = false
+      this.selectedHouseId = ''
+      this.selectedZoneId = ''
+      this.selectedArrowId = ''
+      this.selectedTextId = ''
+      this.selectedLineId = ''
+
+      this.refreshZones()
+      this.refreshArrows()
+      this.refreshText()
+      this.refreshLines()
+    },
   },
 
   // Component lifecycle: load data first, then initialize MapLibre.
@@ -2212,22 +2239,38 @@ export default {
   <v-card class="map-shell position-relative w-100" rounded="0">
     <div id="map" class="map-container"></div>
 
-    <!-- Open Toolbar -->
-    <v-btn
-      v-if="!showMapTools"
-      variant="tonal"
-      color="blue"
-      class="map-pencil-btn"
-      elevation="0"
-      @click="showMapTools = !showMapTools"
-    >
-      <v-icon icon="$PencilOutline" />
-    </v-btn>
-
     <!-- Bottom tool bar. Shows add buttons when no tool is active. -->
-    <v-bottom-navigation v-if="showMapTools" class="bg-transparent mb-15" elevation="0" rounded="0">
-      <v-card class="ga-1 rounded-lg bg-primary" elevation="0">
-        <template v-if="mode === 'none'">
+    <v-bottom-navigation class="bg-primary mb-14" elevation="0" rounded="t-lg">
+      <v-card class="bg-transparent">
+        <!-- MAIN MAP NAV -->
+        <template v-if="!showMapTools && mode === 'none'">
+          <v-btn
+            stacked
+            size="x-small"
+            color="transparent"
+            class="text-grey"
+            elevation="0"
+            @click="showWorldView"
+          >
+            <v-icon start icon="$Earth" />
+            <span>World</span>
+          </v-btn>
+
+          <v-btn
+            stacked
+            size="x-small"
+            color="transparent"
+            class="text-grey"
+            elevation="0"
+            @click="showMapTools = true"
+          >
+            <v-icon start icon="$PencilOutline" />
+            <span>Tools</span>
+          </v-btn>
+        </template>
+
+        <!-- TOOL NAV -->
+        <template v-if="showMapTools && mode === 'none'">
           <v-btn
             stacked
             size="x-small"
@@ -2237,7 +2280,7 @@ export default {
             @click="openAddHouseMode"
           >
             <v-icon start icon="$Home" />
-            + Home
+            <span>+ Home</span>
           </v-btn>
 
           <v-btn
@@ -2249,7 +2292,7 @@ export default {
             @click="openAddZoneMode"
           >
             <v-icon start icon="$CropSquare" />
-            + Zone
+            <span>+ Zone</span>
           </v-btn>
 
           <v-btn
@@ -2261,7 +2304,7 @@ export default {
             @click="openAddArrowMode"
           >
             <v-icon start icon="$ArrowRightThin" />
-            + Line
+            <span>+ Line</span>
           </v-btn>
 
           <v-btn
@@ -2273,7 +2316,7 @@ export default {
             @click="openAddTextMode"
           >
             <v-icon start icon="$FormatText" />
-            + Text
+            <span>+ Text</span>
           </v-btn>
 
           <v-btn
@@ -2285,82 +2328,84 @@ export default {
             @click="openAddLineMode"
           >
             <v-icon start icon="$VectorSquarePlus" />
-            + Dots
+            <span>+ Dots</span>
           </v-btn>
 
           <v-btn
-            v-if="showMapTools"
             stacked
             size="x-small"
             color="transparent"
             class="text-grey"
             elevation="0"
-            @click="showMapTools = !showMapTools"
+            @click="resetMapNav"
           >
             <v-icon start icon="$Close" />
-            CLOSE
+            <span>Close</span>
           </v-btn>
         </template>
 
-        <v-btn
-          v-if="isAddingHouse"
-          stacked
-          size="x-small"
-          color="transparent"
-          class="text-blue"
-          elevation="0"
-          @click="openSelectedHouseDetails"
-        >
-          Open House Controls
-        </v-btn>
+        <!-- ACTIVE EDIT NAV -->
+        <template v-if="mode !== 'none'">
+          <v-btn
+            v-if="isAddingHouse"
+            stacked
+            size="x-small"
+            color="transparent"
+            class="text-blue"
+            elevation="0"
+            @click="openSelectedHouseDetails"
+          >
+            <span>Open House Controls</span>
+          </v-btn>
 
-        <v-btn
-          v-if="isAddingZone"
-          stacked
-          size="x-small"
-          color="transparent"
-          class="text-blue"
-          elevation="0"
-          @click="openSelectedZoneDetails"
-        >
-          Open Zone Controls
-        </v-btn>
+          <v-btn
+            v-if="isAddingZone"
+            stacked
+            size="x-small"
+            color="transparent"
+            class="text-blue"
+            elevation="0"
+            @click="openSelectedZoneDetails"
+          >
+            <span>Open Zone Controls</span>
+          </v-btn>
 
-        <v-btn
-          v-if="isAddingArrow"
-          stacked
-          size="x-small"
-          color="transparent"
-          class="text-blue"
-          elevation="0"
-          @click="openSelectedArrowDetails"
-        >
-          Open Straight Line Controls
-        </v-btn>
+          <v-btn
+            v-if="isAddingArrow"
+            stacked
+            size="x-small"
+            color="transparent"
+            class="text-blue"
+            elevation="0"
+            @click="openSelectedArrowDetails"
+          >
+            <span>Open Straight Line Controls</span>
+          </v-btn>
 
-        <v-btn
-          v-if="isAddingText"
-          stacked
-          size="x-small"
-          color="transparent"
-          class="text-blue"
-          elevation="0"
-          @click="openSelectedTextDetails"
-        >
-          Open Text Controls
-        </v-btn>
+          <v-btn
+            v-if="isAddingText"
+            stacked
+            size="x-small"
+            color="transparent"
+            class="text-blue"
+            elevation="0"
+            @click="openSelectedTextDetails"
+          >
+            <span>Open Text Controls</span>
+          </v-btn>
 
-        <v-btn
-          v-if="isAddingLine"
-          stacked
-          size="x-small"
-          color="transparent"
-          class="text-blue"
-          elevation="0"
-          @click="openSelectedLineDetails"
-        >
-          Finish / Open Chained Dot Controls
-        </v-btn>
+          <v-btn
+            v-if="isAddingLine"
+            stacked
+            size="x-small"
+            color="transparent"
+            class="text-blue"
+            elevation="0"
+            @click="openSelectedLineDetails"
+          >
+            <span>Finish / Open Chained Dot Controls</span>
+          </v-btn>
+        </template>
       </v-card>
     </v-bottom-navigation>
 
@@ -2850,19 +2895,11 @@ export default {
 <style>
 /* canva for maps */
 .map-shell {
-  height: 100vh;
+  height: 100%;
 }
 
 .map-container {
   width: 100%;
   height: 100%;
-}
-
-/* open toolbar pencil */
-.map-pencil-btn {
-  position: absolute;
-  right: 16px;
-  bottom: 70px;
-  z-index: 10;
 }
 </style>

@@ -682,7 +682,7 @@ export default {
     </v-card>
 
     <!-- Bottom Chapter Nav -->
-    <v-bottom-navigation class="bg-primary mb-14" elevation="0">
+    <v-bottom-navigation class="bg-primary mb-14" elevation="1" rounded="t-xl">
       <v-card class="px-4 ga-2 bg-primary d-flex justify-space-between w-100" rounded="0">
         <v-btn
           size="x-small"
@@ -718,8 +718,12 @@ export default {
           :disabled="!hasSelectedVerses"
           @click="openBookmarkDialog"
         >
-          <v-icon size="small" icon="$BookmarkOutline" />
-          <span>{{
+          <v-icon
+            :class="selectedVerseIds.length >= 1 ? 'text-accent' : ''"
+            size="small"
+            icon="$BookmarkOutline"
+          />
+          <span :class="selectedVerseIds.length >= 1 ? 'text-accent' : ''">{{
             selectedVerseIds.length > 1 ? `Note ${selectedVerseIds.length}` : 'Note'
           }}</span>
         </v-btn>

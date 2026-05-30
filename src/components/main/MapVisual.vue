@@ -2240,8 +2240,8 @@ export default {
     <div id="map" class="map-container"></div>
 
     <!-- Bottom tool bar. Shows add buttons when no tool is active. -->
-    <v-bottom-navigation class="bg-primary mb-14" elevation="0" rounded="t-lg">
-      <v-card class="bg-transparent">
+    <v-bottom-navigation class="bg-primary mb-14" elevation="1" rounded="t-xl">
+      <v-card class="px-4 ga-2 bg-primary d-flex justify-space-between w-100" rounded="0">
         <!-- MAIN MAP NAV -->
         <template v-if="!showMapTools && mode === 'none'">
           <v-btn

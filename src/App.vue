@@ -1,6 +1,9 @@
 <script lang="ts">
-// import { globalSt } from '@/stores/globalSt.js'
 import AppMenu from '@/components/layout/AppMenu.vue'
+import { useBackHandler } from '@/composables/useBackHandler'
+import { useSwipeBack } from '@/composables/useSwipeBack'
+
+const swipeBack = useSwipeBack()
 
 export default {
   name: 'MainLayout',
@@ -9,22 +12,27 @@ export default {
     AppMenu,
   },
 
-  data: () => ({
-    // globalSt: globalSt(),
-  }),
+  mounted() {
+    const { setupBackHandler } = useBackHandler()
+
+    setupBackHandler()
+    swipeBack.addSwipeBack()
+  },
+
+  beforeUnmount() {
+    swipeBack.removeSwipeBack()
+  },
 }
 </script>
 
 <template>
   <v-app>
-    <!-- Main Content -->
     <v-main class="bg-primary">
       <router-view v-slot="{ Component }">
         <component :is="Component" />
       </router-view>
     </v-main>
 
-    <!-- Global Menu Dialog -->
     <AppMenu />
   </v-app>
 </template>

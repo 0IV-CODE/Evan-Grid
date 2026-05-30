@@ -119,6 +119,10 @@ export default {
     bookmarkDialog: false,
     bookmarksDialog: false,
 
+    // loading
+    versesLoading: true,
+    versesLoadingText: 'Loading Bible...',
+
     selectedVerseIds: [] as string[],
     activeVerse: null as FlatVerse | null,
 
@@ -242,13 +246,19 @@ export default {
   },
 
   async mounted() {
-    await this.loadBible()
-    await this.loadAnnotations()
+    this.versesLoading = true
 
-    if (this.books.length) {
-      this.currentBookName = this.books[0].book
-      this.currentChapter = '1'
-      this.buildFlatVerses()
+    try {
+      await this.loadBible()
+      await this.loadAnnotations()
+
+      if (this.books.length) {
+        this.currentBookName = this.books[0].book
+        this.currentChapter = '1'
+        this.buildFlatVerses()
+      }
+    } finally {
+      this.versesLoading = false
     }
   },
 
@@ -607,7 +617,25 @@ export default {
   <v-card class="pa-0 mx-auto rounded-0" max-width="600" rounded="0" elevation="0">
     <!-- Bible Reader -->
     <v-card class="pa-0" rounded="0" elevation="0">
+      <div v-if="versesLoading" class="verse-skeleton px-2 py-8">
+        <div class="text-center mb-8">
+          <v-skeleton-loader type="heading" width="180" class="mx-auto mb-4" />
+
+          <v-skeleton-loader type="avatar" width="80" height="80" class="mx-auto" />
+        </div>
+
+        <div v-for="index in 10" :key="index" class="mb-5">
+          <div class="d-flex align-start ga-3">
+            <v-skeleton-loader type="text" width="24" />
+
+            <div class="flex-grow-1">
+              <v-skeleton-loader type="paragraph" />
+            </div>
+          </div>
+        </div>
+      </div>
       <v-virtual-scroll
+        v-else
         ref="verseScroller"
         :items="flatVerses"
         height="100vh"
@@ -1147,7 +1175,7 @@ export default {
 .verse-selected {
   text-decoration-line: underline;
   text-decoration-style: dashed;
-  text-decoration-color: rgb(var(--v-theme-primary));
+  text-decoration-color: #2196f3;
   text-decoration-thickness: 2px;
   text-underline-offset: 5px;
 }

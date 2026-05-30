@@ -116,6 +116,7 @@ import {
   VAlert,
   VBottomNavigation,
   VChip,
+  VSkeletonLoader,
 } from 'vuetify/components'
 import { Ripple } from 'vuetify/directives'
 
@@ -157,6 +158,7 @@ export default createVuetify({
     VAlert,
     VBottomNavigation,
     VChip,
+    VSkeletonLoader,
   },
   directives: { Ripple },
   theme: {

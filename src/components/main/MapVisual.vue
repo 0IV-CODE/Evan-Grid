@@ -208,7 +208,7 @@ export default {
     defaultStartLocation: {
       lng: -87.449,
       lat: 20.212,
-      zoom: 2,
+      zoom: 1,
     },
 
     // Dropdown options for object forms.

@@ -1,27 +1,35 @@
 import Dexie, { type Table } from 'dexie'
 
-export type VerseAnnotation = {
-  id?: number
+export type NoteVerse = {
   verseId: string
   book: string
   chapter: string
   verse: string
   text: string
+}
+
+export type BibleNote = {
+  id?: number
+
+  // zero, one, or many verses
+  verses: NoteVerse[]
+
   comment: string
   tags: string[]
   highlightColor: string
+
   createdAt: number
   updatedAt: number
 }
 
 class BibleNotesDb extends Dexie {
-  annotations!: Table<VerseAnnotation, number>
+  notes!: Table<BibleNote, number>
 
   constructor() {
     super('BibleNotesDb')
 
-    this.version(2).stores({
-      annotations: '++id, verseId, book, chapter, *tags, updatedAt',
+    this.version(3).stores({
+      notes: '++id, updatedAt, *tags',
     })
   }
 }

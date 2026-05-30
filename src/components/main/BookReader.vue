@@ -1,5 +1,5 @@
 <script lang="ts">
-import { bibleNotesDb, type VerseAnnotation } from '@/db/bibleNotesDb'
+import { bibleNotesDb, type BibleNote } from '@/db/bibleNotesDb'
 
 type BibleVerse = {
   verse: string
@@ -134,11 +134,11 @@ export default {
     bookmarkSearch: '',
     bookmarkTagFilter: '',
 
-    bookmarkToDelete: null as VerseAnnotation | null,
+    noteToDelete: null as BibleNote | null,
     deleteBookmarkDialog: false,
 
-    // saved annotations indexed by verseId
-    annotationsByVerseId: {} as Record<string, VerseAnnotation>,
+    notes: [] as BibleNote[],
+    activeNote: null as BibleNote | null,
 
     highlightColors: [
       '#FFF500',
@@ -183,15 +183,15 @@ export default {
       return this.currentChapterIndex < this.chapterItems.length - 1
     },
 
-    selectedVerseAnnotation(): VerseAnnotation | undefined {
+    selectedVerseNote(): BibleNote | undefined {
       const verse = this.primarySelectedVerse
       if (!verse) return undefined
 
-      return this.annotationsByVerseId[verse.id]
+      return this.getVerseNote(verse.id)
     },
 
-    allBookmarks(): VerseAnnotation[] {
-      return Object.values(this.annotationsByVerseId).sort((a, b) => {
+    allBookmarks(): BibleNote[] {
+      return [...this.notes].sort((a, b) => {
         return b.updatedAt - a.updatedAt
       })
     },
@@ -210,21 +210,26 @@ export default {
       return [...new Set([...this.allTags, ...this.annotationTags])].sort()
     },
 
-    filteredBookmarks(): VerseAnnotation[] {
+    filteredBookmarks(): BibleNote[] {
       const search = this.bookmarkSearch.toLowerCase().trim()
       const tag = this.bookmarkTagFilter
 
-      return this.allBookmarks.filter((bookmark) => {
+      return this.allBookmarks.filter((note) => {
+        const verseText = note.verses
+          .map((verse) => {
+            return `${verse.book} ${verse.chapter}:${verse.verse} ${verse.text}`
+          })
+          .join(' ')
+          .toLowerCase()
+
         const matchesSearch =
           !search ||
-          bookmark.book.toLowerCase().includes(search) ||
-          bookmark.text.toLowerCase().includes(search) ||
-          String(bookmark.comment ?? '')
+          verseText.includes(search) ||
+          String(note.comment ?? '')
             .toLowerCase()
-            .includes(search) ||
-          `${bookmark.book} ${bookmark.chapter}:${bookmark.verse}`.toLowerCase().includes(search)
+            .includes(search)
 
-        const matchesTag = !tag || bookmark.tags?.includes(tag)
+        const matchesTag = !tag || note.tags?.includes(tag)
 
         return matchesSearch && matchesTag
       })
@@ -250,7 +255,7 @@ export default {
 
     try {
       await this.loadBible()
-      await this.loadAnnotations()
+      await this.loadNotes()
 
       if (this.books.length) {
         this.currentBookName = this.books[0].book
@@ -377,24 +382,14 @@ export default {
       this.currentChapter = visibleChapter
     },
 
-    async loadAnnotations() {
-      const annotations = await bibleNotesDb.annotations.toArray()
-
-      this.annotationsByVerseId = annotations.reduce(
-        (map, annotation) => {
-          map[annotation.verseId] = {
-            ...annotation,
-            tags: annotation.tags ?? [],
-          }
-
-          return map
-        },
-        {} as Record<string, VerseAnnotation>,
-      )
+    async loadNotes() {
+      this.notes = await bibleNotesDb.notes.orderBy('updatedAt').reverse().toArray()
     },
 
-    getVerseAnnotation(verseId: string) {
-      return this.annotationsByVerseId[verseId]
+    getVerseNote(verseId: string): BibleNote | undefined {
+      return this.notes.find((note) => {
+        return note.verses.some((verse) => verse.verseId === verseId)
+      })
     },
 
     selectVerse(item: FlatVerse) {
@@ -413,8 +408,9 @@ export default {
       this.selectedVerseIds = [...this.selectedVerseIds, item.id]
       this.activeVerse = item
 
-      const existing = this.getVerseAnnotation(item.id)
+      const existing = this.getVerseNote(item.id)
 
+      this.activeNote = existing ?? null
       this.annotationComment = String(existing?.comment ?? '')
       this.annotationTags = this.normalizeTags(existing?.tags)
       this.annotationColor = String(existing?.highlightColor || '#FFF59D')
@@ -430,8 +426,9 @@ export default {
       const firstVerse = this.selectedVerses[0]
       this.activeVerse = firstVerse
 
-      const existing = this.getVerseAnnotation(firstVerse.id)
+      const existing = this.getVerseNote(firstVerse.id)
 
+      this.activeNote = existing ?? null
       this.annotationComment = String(existing?.comment ?? '')
       this.annotationTags = this.normalizeTags(existing?.tags)
       this.annotationColor = String(existing?.highlightColor || '#FFF59D')
@@ -461,8 +458,6 @@ export default {
     },
 
     async saveVerseAnnotation() {
-      if (!this.selectedVerses.length) return
-
       const now = Date.now()
 
       const cleanTags = Array.isArray(this.annotationTags)
@@ -470,59 +465,64 @@ export default {
         : []
 
       const uniqueTags = [...new Set(cleanTags)]
-      const nextAnnotations = { ...this.annotationsByVerseId }
 
-      for (const verse of this.selectedVerses) {
-        const existing = this.getVerseAnnotation(verse.id)
+      const verses = this.selectedVerses.map((verse) => ({
+        verseId: String(verse.id),
+        book: String(verse.book),
+        chapter: String(verse.chapter),
+        verse: String(verse.verse),
+        text: String(verse.text),
+      }))
 
-        const payload: VerseAnnotation = {
-          id: existing?.id,
-          verseId: String(verse.id),
-          book: String(verse.book),
-          chapter: String(verse.chapter),
-          verse: String(verse.verse),
-          text: String(verse.text),
-          comment: String(this.annotationComment ?? '').trim(),
-          tags: uniqueTags,
-          highlightColor: String(this.annotationColor || '#FFF59D'),
-          createdAt: existing?.createdAt ?? now,
-          updatedAt: now,
-        }
-
-        const id = await bibleNotesDb.annotations.put(JSON.parse(JSON.stringify(payload)))
-
-        nextAnnotations[verse.id] = {
-          ...payload,
-          id,
-        }
+      const payload: BibleNote = {
+        id: this.activeNote?.id,
+        verses,
+        comment: String(this.annotationComment ?? '').trim(),
+        tags: uniqueTags,
+        highlightColor: String(this.annotationColor || '#FFF59D'),
+        createdAt: this.activeNote?.createdAt ?? now,
+        updatedAt: now,
       }
 
-      this.annotationsByVerseId = nextAnnotations
+      const id = await bibleNotesDb.notes.put(JSON.parse(JSON.stringify(payload)))
+
+      const savedNote = {
+        ...payload,
+        id,
+      }
+
+      this.notes = [savedNote, ...this.notes.filter((note) => note.id !== id)]
+
       this.selectedVerseIds = []
       this.activeVerse = null
+      this.activeNote = null
       this.bookmarkDialog = false
     },
 
-    bookmarkToFlatVerse(bookmark: VerseAnnotation): FlatVerse {
+    noteVerseToFlatVerse(note: BibleNote): FlatVerse | null {
+      const verse = note.verses[0]
+      if (!verse) return null
+
       return {
-        id: String(bookmark.verseId),
-        book: String(bookmark.book),
-        chapter: String(bookmark.chapter),
-        verse: String(bookmark.verse),
-        text: String(bookmark.text),
+        id: String(verse.verseId),
+        book: String(verse.book),
+        chapter: String(verse.chapter),
+        verse: String(verse.verse),
+        text: String(verse.text),
         isChapterStart: false,
       }
     },
 
-    editBookmark(bookmark: VerseAnnotation) {
-      const verse = this.bookmarkToFlatVerse(bookmark)
+    editBookmark(note: BibleNote) {
+      this.activeNote = note
+      this.selectedVerseIds = note.verses.map((verse) => verse.verseId)
 
-      this.activeVerse = verse
-      this.selectedVerseIds = [verse.id]
+      const firstVerse = this.noteVerseToFlatVerse(note)
+      this.activeVerse = firstVerse
 
-      this.annotationComment = String(bookmark.comment ?? '')
-      this.annotationTags = this.normalizeTags(bookmark.tags)
-      this.annotationColor = String(bookmark.highlightColor || '#FFF59D')
+      this.annotationComment = String(note.comment ?? '')
+      this.annotationTags = this.normalizeTags(note.tags)
+      this.annotationColor = String(note.highlightColor || '#FFF59D')
 
       this.bookmarkDialog = true
     },
@@ -533,30 +533,29 @@ export default {
       return [...new Set(tags.map((tag) => String(tag).trim().toLowerCase()).filter(Boolean))]
     },
 
-    async deleteBookmark(bookmark: VerseAnnotation) {
-      if (!bookmark.id) return
+    async deleteBookmark(note: BibleNote) {
+      if (!note.id) return
 
-      await bibleNotesDb.annotations.delete(bookmark.id)
+      await bibleNotesDb.notes.delete(note.id)
 
-      const next = { ...this.annotationsByVerseId }
-      delete next[bookmark.verseId]
-
-      this.annotationsByVerseId = next
+      this.notes = this.notes.filter((item) => item.id !== note.id)
     },
 
-    goToBookmark(bookmark: VerseAnnotation) {
+    goToBookmark(note: BibleNote) {
+      const firstVerse = note.verses[0]
+      if (!firstVerse) return
+
       this.bookmarksDialog = false
-      this.currentBookName = bookmark.book
-      this.currentChapter = bookmark.chapter
+      this.currentBookName = firstVerse.book
+      this.currentChapter = firstVerse.chapter
       this.buildFlatVerses()
 
-      const verse = this.bookmarkToFlatVerse(bookmark)
-
-      this.activeVerse = verse
-      this.selectedVerseIds = [verse.id]
+      this.activeNote = note
+      this.activeVerse = this.noteVerseToFlatVerse(note)
+      this.selectedVerseIds = note.verses.map((verse) => verse.verseId)
 
       this.$nextTick(() => {
-        const index = this.flatVerses.findIndex((item) => item.id === bookmark.verseId)
+        const index = this.flatVerses.findIndex((item) => item.id === firstVerse.verseId)
         const scroller = this.$refs.verseScroller as any
 
         if (index !== -1 && scroller?.scrollToIndex) {
@@ -577,36 +576,39 @@ export default {
       return book?.trim()?.charAt(0)?.toUpperCase() || 'B'
     },
 
-    confirmDeleteBookmark(bookmark: VerseAnnotation) {
-      this.bookmarkToDelete = bookmark
+    confirmDeleteBookmark(note: BibleNote) {
+      this.noteToDelete = note
       this.deleteBookmarkDialog = true
     },
 
     cancelDeleteBookmark() {
-      this.bookmarkToDelete = null
+      this.noteToDelete = null
       this.deleteBookmarkDialog = false
     },
 
     async deleteConfirmedBookmark() {
-      if (!this.bookmarkToDelete) return
+      if (!this.noteToDelete) return
 
-      await this.deleteBookmark(this.bookmarkToDelete)
+      const deletedVerseIds = this.noteToDelete.verses.map((verse) => verse.verseId)
+
+      await this.deleteBookmark(this.noteToDelete)
 
       this.selectedVerseIds = this.selectedVerseIds.filter((id) => {
-        return id !== this.bookmarkToDelete?.verseId
+        return !deletedVerseIds.includes(id)
       })
 
       this.activeVerse = null
-      this.bookmarkToDelete = null
+      this.activeNote = null
+      this.noteToDelete = null
       this.deleteBookmarkDialog = false
       this.bookmarkDialog = false
     },
 
     confirmDeleteSelectedVerseAnnotation() {
-      const annotation = this.selectedVerseAnnotation
-      if (!annotation) return
+      const note = this.selectedVerseNote
+      if (!note) return
 
-      this.bookmarkToDelete = annotation
+      this.noteToDelete = note
       this.deleteBookmarkDialog = true
     },
   },
@@ -659,13 +661,12 @@ export default {
             <p
               class="text-body-1 mb-n6 bible-text verse-clickable"
               :class="{
-                'verse-has-note': getVerseAnnotation(item.id),
+                'verse-has-note': getVerseNote(item.id),
                 'verse-selected': isVerseSelected(item.id),
               }"
               :style="{
                 fontSize: `${16 * textScale}px`,
-                '--verse-highlight-color':
-                  getVerseAnnotation(item.id)?.highlightColor || 'transparent',
+                '--verse-highlight-color': getVerseNote(item.id)?.highlightColor || 'transparent',
               }"
               @click="selectVerse(item)"
             >
@@ -798,8 +799,14 @@ export default {
           <div class="w-100">
             <!-- Labels -->
             <div class="d-flex ga-2 mb-4 note-scroll-row">
-              <v-chip size="small" prepend-icon="$Plus" variant="outlined" class="font-weight-bold">
-                Label
+              <v-chip
+                size="small"
+                prepend-icon="$Tag"
+                variant="plain"
+                class="font-weight-bold"
+                readonly
+              >
+                Attached Labels
               </v-chip>
 
               <v-chip
@@ -858,7 +865,7 @@ export default {
             </div>
 
             <v-btn
-              v-if="selectedVerseAnnotation"
+              v-if="selectedVerseNote"
               block
               color="error"
               variant="tonal"
@@ -941,8 +948,8 @@ export default {
 
           <!-- Saved cards -->
           <v-card
-            v-for="bookmark in filteredBookmarks"
-            :key="bookmark.verseId"
+            v-for="note in filteredBookmarks"
+            :key="note.id"
             rounded="xl"
             elevation="0"
             color="surface"
@@ -952,7 +959,7 @@ export default {
               <div class="d-flex align-start ga-4">
                 <!-- Circle marker without v-avatar -->
                 <div class="d-flex align-center justify-center font-weight-bold text-h6">
-                  {{ getBookInitial(bookmark.book) }}
+                  {{ getBookInitial(note.book) }}
                 </div>
 
                 <div class="flex-grow-1">
@@ -960,27 +967,35 @@ export default {
                   <div class="d-flex align-start justify-space-between ga-3">
                     <div class="text-h6 font-weight-regular line-height-tight">
                       You saved
-                      <strong>
-                        {{ bookmark.book }} {{ bookmark.chapter }}:{{ bookmark.verse }}
+                      <strong v-if="note.verses.length === 1">
+                        {{ note.verses[0].book }} {{ note.verses[0].chapter }}:{{
+                          note.verses[0].verse
+                        }}
                       </strong>
+
+                      <strong v-else-if="note.verses.length > 1">
+                        {{ note.verses.length }} verses
+                      </strong>
+
+                      <strong v-else> a note </strong>
                     </div>
 
                     <div
-                      v-if="bookmark.highlightColor"
+                      v-if="note.highlightColor"
                       class="bookmark-color-dot mt-2"
-                      :style="{ backgroundColor: bookmark.highlightColor }"
+                      :style="{ backgroundColor: note.highlightColor }"
                     />
                   </div>
 
                   <!-- Tags -->
                   <div
-                    v-if="bookmark.tags?.length"
+                    v-if="note.tags?.length"
                     class="d-flex align-center flex-wrap ga-1 mt-2 text-medium-emphasis text-caption"
                   >
                     <v-icon size="16" icon="$Tag" />
 
                     <v-chip
-                      v-for="tag in bookmark.tags"
+                      v-for="tag in note.tags"
                       :key="tag"
                       size="x-small"
                       variant="text"
@@ -992,28 +1007,30 @@ export default {
                   </div>
 
                   <!-- Verse quote -->
-                  <div class="d-flex ga-4 mt-6">
+                  <div v-if="note.verses.length" class="d-flex ga-4 mt-6">
                     <div class="saved-quote-line" />
 
                     <div>
-                      <p class="text-body-1 mb-3 saved-verse-text">
-                        <sup class="text-medium-emphasis mr-1">
-                          {{ bookmark.verse }}
-                        </sup>
+                      <div v-for="verse in note.verses" :key="verse.verseId" class="mb-3">
+                        <p class="text-body-1 mb-1 saved-verse-text">
+                          <sup class="text-medium-emphasis mr-1">
+                            {{ verse.verse }}
+                          </sup>
 
-                        {{ bookmark.text }}
-                      </p>
+                          {{ verse.text }}
+                        </p>
 
-                      <p class="text-subtitle-2 font-weight-bold mb-0">
-                        {{ bookmark.book }} {{ bookmark.chapter }}:{{ bookmark.verse }} KJV
-                      </p>
+                        <p class="text-subtitle-2 font-weight-bold mb-0">
+                          {{ verse.book }} {{ verse.chapter }}:{{ verse.verse }} KJV
+                        </p>
+                      </div>
                     </div>
                   </div>
 
                   <!-- Note without v-sheet -->
-                  <div v-if="bookmark.comment" class="pa-4 mt-5 rounded-lg bg-surface-variant">
+                  <div v-if="note.comment" class="pa-4 mt-5 rounded-lg bg-surface-variant">
                     <p class="ma-0 text-body-2">
-                      {{ bookmark.comment }}
+                      {{ note.comment }}
                     </p>
                   </div>
                 </div>
@@ -1025,7 +1042,7 @@ export default {
                 prepend-icon="$ArrowULeftTop"
                 variant="text"
                 class="text-none"
-                @click="goToBookmark(bookmark)"
+                @click="goToBookmark(note)"
               >
                 View
               </v-btn>
@@ -1034,7 +1051,7 @@ export default {
                 prepend-icon="$CommentOutline"
                 variant="text"
                 class="text-none"
-                @click="editBookmark(bookmark)"
+                @click="editBookmark(note)"
               >
                 Edit
               </v-btn>
@@ -1044,7 +1061,7 @@ export default {
                 color="error"
                 variant="text"
                 class="text-none"
-                @click="confirmDeleteBookmark(bookmark)"
+                @click="confirmDeleteBookmark(note)"
               >
                 Delete
               </v-btn>
@@ -1064,8 +1081,14 @@ export default {
 
           <p class="text-body-2 text-medium-emphasis mb-0">This action cannot be undone.</p>
 
-          <p v-if="bookmarkToDelete" class="text-caption text-medium-emphasis mt-3 mb-0">
-            {{ bookmarkToDelete.book }} {{ bookmarkToDelete.chapter }}:{{ bookmarkToDelete.verse }}
+          <p v-if="noteToDelete?.verses.length" class="text-caption text-medium-emphasis mt-3 mb-0">
+            {{ noteToDelete.verses.length }} linked verse{{
+              noteToDelete.verses.length > 1 ? 's' : ''
+            }}
+          </p>
+
+          <p v-else-if="noteToDelete" class="text-caption text-medium-emphasis mt-3 mb-0">
+            General note
           </p>
         </v-card-text>
 

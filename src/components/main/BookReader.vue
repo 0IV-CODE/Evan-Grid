@@ -1108,20 +1108,21 @@ export default {
     <v-dialog v-model="drawer" fullscreen>
       <v-card class="pa-0 bg-primary" elevation="0" rounded="0">
         <!-- Header -->
-        <v-card class="pa-4 d-flex align-center ga-4" rounded="0" elevation="0">
+        <v-card class="px-4 pt-2 d-flex align-center ga-4" rounded="0" elevation="0">
           <v-btn icon="$ChevronLeft" variant="text" @click="drawer = false" />
 
           <p class="text-h6 font-weight-bold ma-0">Books</p>
         </v-card>
 
         <!-- Search -->
-        <v-card class="pa-3" rounded="0" elevation="0">
+        <v-card class="py-2 px-3" rounded="0" elevation="0">
           <v-text-field
             v-model="bookSearch"
             prepend-inner-icon="$Magnify"
             :append-inner-icon="bookSearch ? '$Close' : ''"
             label="Search"
             variant="outlined"
+            density="compact"
             rounded="xl"
             hide-details
             @click:append-inner="bookSearch = ''"

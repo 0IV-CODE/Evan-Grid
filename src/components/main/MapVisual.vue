@@ -2236,177 +2236,175 @@ export default {
     - Bottom navigation switches between add tools.
     - Dialogs edit and save each selected object.
   -->
-  <v-card class="map-shell position-relative w-100" rounded="0">
+  <div class="map-shell">
     <div id="map" class="map-container"></div>
 
     <!-- Bottom tool bar. Shows add buttons when no tool is active. -->
-    <v-bottom-navigation class="bg-primary mb-14" elevation="1" rounded="t-xl">
-      <v-card class="px-4 ga-2 bg-primary d-flex justify-space-between w-100" rounded="0">
-        <!-- MAIN MAP NAV -->
-        <template v-if="!showMapTools && mode === 'none'">
-          <v-btn
-            stacked
-            size="x-small"
-            color="transparent"
-            class="text-grey"
-            elevation="0"
-            @click="showWorldView"
-          >
-            <v-icon start icon="$Earth" />
-            <span>World</span>
-          </v-btn>
+    <v-bottom-navigation class="mb-14" bg-color="primary" elevation="1" rounded="t-xl">
+      <!-- MAIN MAP NAV -->
+      <div v-if="!showMapTools && mode === 'none'">
+        <v-btn
+          stacked
+          size="x-small"
+          color="transparent"
+          class="text-grey"
+          elevation="0"
+          @click="showWorldView"
+        >
+          <v-icon start icon="$Earth" />
+          <span>World</span>
+        </v-btn>
 
-          <v-btn
-            stacked
-            size="x-small"
-            color="transparent"
-            class="text-grey"
-            elevation="0"
-            @click="showMapTools = true"
-          >
-            <v-icon start icon="$PencilOutline" />
-            <span>Tools</span>
-          </v-btn>
-        </template>
+        <v-btn
+          stacked
+          size="x-small"
+          color="transparent"
+          class="text-grey"
+          elevation="0"
+          @click="showMapTools = true"
+        >
+          <v-icon start icon="$PencilOutline" />
+          <span>Tools</span>
+        </v-btn>
+      </div>
 
-        <!-- TOOL NAV -->
-        <template v-if="showMapTools && mode === 'none'">
-          <v-btn
-            stacked
-            size="x-small"
-            color="transparent"
-            class="text-grey"
-            elevation="0"
-            @click="openAddHouseMode"
-          >
-            <v-icon start icon="$Home" />
-            <span>+ Home</span>
-          </v-btn>
+      <!-- TOOL NAV -->
+      <div v-if="showMapTools && mode === 'none'">
+        <v-btn
+          stacked
+          size="x-small"
+          color="transparent"
+          class="text-grey"
+          elevation="0"
+          @click="openAddHouseMode"
+        >
+          <v-icon start icon="$Home" />
+          <span>+ Home</span>
+        </v-btn>
 
-          <v-btn
-            stacked
-            size="x-small"
-            color="transparent"
-            class="text-grey"
-            elevation="0"
-            @click="openAddZoneMode"
-          >
-            <v-icon start icon="$CropSquare" />
-            <span>+ Zone</span>
-          </v-btn>
+        <v-btn
+          stacked
+          size="x-small"
+          color="transparent"
+          class="text-grey"
+          elevation="0"
+          @click="openAddZoneMode"
+        >
+          <v-icon start icon="$CropSquare" />
+          <span>+ Zone</span>
+        </v-btn>
 
-          <v-btn
-            stacked
-            size="x-small"
-            color="transparent"
-            class="text-grey"
-            elevation="0"
-            @click="openAddArrowMode"
-          >
-            <v-icon start icon="$ArrowRightThin" />
-            <span>+ Line</span>
-          </v-btn>
+        <v-btn
+          stacked
+          size="x-small"
+          color="transparent"
+          class="text-grey"
+          elevation="0"
+          @click="openAddArrowMode"
+        >
+          <v-icon start icon="$ArrowRightThin" />
+          <span>+ Line</span>
+        </v-btn>
 
-          <v-btn
-            stacked
-            size="x-small"
-            color="transparent"
-            class="text-grey"
-            elevation="0"
-            @click="openAddTextMode"
-          >
-            <v-icon start icon="$FormatText" />
-            <span>+ Text</span>
-          </v-btn>
+        <v-btn
+          stacked
+          size="x-small"
+          color="transparent"
+          class="text-grey"
+          elevation="0"
+          @click="openAddTextMode"
+        >
+          <v-icon start icon="$FormatText" />
+          <span>+ Text</span>
+        </v-btn>
 
-          <v-btn
-            stacked
-            size="x-small"
-            color="transparent"
-            class="text-grey"
-            elevation="0"
-            @click="openAddLineMode"
-          >
-            <v-icon start icon="$VectorSquarePlus" />
-            <span>+ Dots</span>
-          </v-btn>
+        <v-btn
+          stacked
+          size="x-small"
+          color="transparent"
+          class="text-grey"
+          elevation="0"
+          @click="openAddLineMode"
+        >
+          <v-icon start icon="$VectorSquarePlus" />
+          <span>+ Dots</span>
+        </v-btn>
 
-          <v-btn
-            stacked
-            size="x-small"
-            color="transparent"
-            class="text-grey"
-            elevation="0"
-            @click="resetMapNav"
-          >
-            <v-icon start icon="$Close" />
-            <span>Close</span>
-          </v-btn>
-        </template>
+        <v-btn
+          stacked
+          size="x-small"
+          color="transparent"
+          class="text-grey"
+          elevation="0"
+          @click="resetMapNav"
+        >
+          <v-icon start icon="$Close" />
+          <span>Close</span>
+        </v-btn>
+      </div>
 
-        <!-- ACTIVE EDIT NAV -->
-        <template v-if="mode !== 'none'">
-          <v-btn
-            v-if="isAddingHouse"
-            stacked
-            size="x-small"
-            color="transparent"
-            class="text-blue"
-            elevation="0"
-            @click="openSelectedHouseDetails"
-          >
-            <span>Open House Controls</span>
-          </v-btn>
+      <!-- ACTIVE EDIT NAV -->
+      <div v-if="mode !== 'none'">
+        <v-btn
+          v-if="isAddingHouse"
+          stacked
+          size="x-small"
+          color="transparent"
+          class="text-blue"
+          elevation="0"
+          @click="openSelectedHouseDetails"
+        >
+          <span>Open House Controls</span>
+        </v-btn>
 
-          <v-btn
-            v-if="isAddingZone"
-            stacked
-            size="x-small"
-            color="transparent"
-            class="text-blue"
-            elevation="0"
-            @click="openSelectedZoneDetails"
-          >
-            <span>Open Zone Controls</span>
-          </v-btn>
+        <v-btn
+          v-if="isAddingZone"
+          stacked
+          size="x-small"
+          color="transparent"
+          class="text-blue"
+          elevation="0"
+          @click="openSelectedZoneDetails"
+        >
+          <span>Open Zone Controls</span>
+        </v-btn>
 
-          <v-btn
-            v-if="isAddingArrow"
-            stacked
-            size="x-small"
-            color="transparent"
-            class="text-blue"
-            elevation="0"
-            @click="openSelectedArrowDetails"
-          >
-            <span>Open Straight Line Controls</span>
-          </v-btn>
+        <v-btn
+          v-if="isAddingArrow"
+          stacked
+          size="x-small"
+          color="transparent"
+          class="text-blue"
+          elevation="0"
+          @click="openSelectedArrowDetails"
+        >
+          <span>Open Straight Line Controls</span>
+        </v-btn>
 
-          <v-btn
-            v-if="isAddingText"
-            stacked
-            size="x-small"
-            color="transparent"
-            class="text-blue"
-            elevation="0"
-            @click="openSelectedTextDetails"
-          >
-            <span>Open Text Controls</span>
-          </v-btn>
+        <v-btn
+          v-if="isAddingText"
+          stacked
+          size="x-small"
+          color="transparent"
+          class="text-blue"
+          elevation="0"
+          @click="openSelectedTextDetails"
+        >
+          <span>Open Text Controls</span>
+        </v-btn>
 
-          <v-btn
-            v-if="isAddingLine"
-            stacked
-            size="x-small"
-            color="transparent"
-            class="text-blue"
-            elevation="0"
-            @click="openSelectedLineDetails"
-          >
-            <span>Finish / Open Chained Dot Controls</span>
-          </v-btn>
-        </template>
-      </v-card>
+        <v-btn
+          v-if="isAddingLine"
+          stacked
+          size="x-small"
+          color="transparent"
+          class="text-blue"
+          elevation="0"
+          @click="openSelectedLineDetails"
+        >
+          <span>Finish / Open Chained Dot Controls</span>
+        </v-btn>
+      </div>
     </v-bottom-navigation>
 
     <!-- Context hint shown only while an add/edit mode is active. -->
@@ -2889,17 +2887,26 @@ export default {
         </v-card-actions>
       </v-card>
     </v-dialog>
-  </v-card>
+  </div>
 </template>
 
 <style>
 /* canva for maps */
 .map-shell {
-  height: 100%;
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 90dvh;
+  overflow: hidden;
 }
 
 .map-container {
+  position: absolute;
+  inset: 0;
   width: 100%;
   height: 100%;
+  z-index: 0;
 }
+
+/* rounded nav */
 </style>
